@@ -1,15 +1,3 @@
-# hud.py  —  Versión 4.3
-"""
-HUD del simulador. Cambios v4.3:
-  - Panel de guía OCULTABLE con tecla H (toggle show/hide)
-  - Un solo panel lateral izquierdo con instrucción del CP actual
-  - Sin feedback volátil superpuesto: los mensajes van en cola
-    y se muestran de uno en uno, con duración más larga
-  - draw_feedback_flash simplificado: 1 mensaje a la vez, centrado
-  - draw_checkpoint_progress: barra compacta bajo el panel de guía
-  - Barreras de zona: draw_zone_barrier dibuja un indicador visual
-    cuando el jugador está bloqueado
-"""
 
 import math
 import pygame
@@ -246,144 +234,13 @@ def draw_penalty_hud(W, H, penalty_pts, cones_hit, fonts, tick):
     cone_col = (195,135,55) if cones_hit>0 else (120,128,135)
     draw_text(cx, py+8, f"Conos: {cones_hit}  |  Max: 50 pts",
               fonts['small'], color=cone_col, anchor="bottomcenter")
-    # Barra progreso penalización — siempre roja
+    # Barra progreso penalización
     bx, bw = px+12, pw-24
     ratio = min(penalty_pts/50.0, 1.0)
     fill_col = [(0.85,0.10,0.08,1.0),(0.88,0.58,0.04,1.0),(0.88,0.10,0.04,1.0)][danger]
     _rect(bx, py+4, bw, 5, (0.08,0.09,0.12,1.0))
     if ratio > 0:
         _rect(bx, py+4, int(bw*ratio), 5, fill_col)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# RECUADRO DE ESTACIONAMIENTO  —  confirmar con ENTER
-# ─────────────────────────────────────────────────────────────────────────────
-# Tabla de penalización por calidad:
-#   >= 80%  →  0 pts
-#   60-79%  → -5 pts
-#   40-59%  → -10 pts
-#   <  40%  → -15 pts
-# El jugador puede confirmar en cualquier momento con ENTER.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def parking_penalty_from_quality(quality):
-    """Devuelve los puntos a descontar según la calidad 0.0-1.0."""
-    if quality >= 0.80: return 0
-    if quality >= 0.60: return 5
-    if quality >= 0.40: return 10
-    return 15
-
-
-def draw_parking_hud(W, H, parking_state, fonts):
-    """
-    parking_state: dict con claves:
-        'active'      : bool
-        'type'        : 'parallel' | 'diagonal'
-        'quality'     : float 0.0-1.0  (en tiempo real)
-        'in_slot'     : bool
-        'speed_ok'    : bool
-        'angle_ok'    : bool
-        'slot_label'  : str
-        'confirmed'   : bool  (True después de presionar ENTER)
-    Si parking_state es None o 'active' es False, no dibuja nada.
-    """
-    if not parking_state or not parking_state.get('active', False):
-        return
-
-    quality    = parking_state.get('quality', 0.0)
-    in_slot    = parking_state.get('in_slot', False)
-    speed_ok   = parking_state.get('speed_ok', False)
-    angle_ok   = parking_state.get('angle_ok', False)
-    slot_lbl   = parking_state.get('slot_label', '—')
-    pk_type    = parking_state.get('type', 'parallel')
-    confirmed  = parking_state.get('confirmed', False)
-    penalty    = parking_penalty_from_quality(quality)
-
-    pw = int(W * 0.27)
-    ph = int(H * 0.23)
-    px = W // 2 - pw // 2
-    py = H - ph - int(H * 0.24)   # justo encima del tablero
-
-    # Color del borde según calidad
-    if quality >= 0.80:
-        border_col = (0.10, 0.88, 0.30, 0.95)
-        title_col  = (80, 240, 110)
-    elif quality >= 0.60:
-        border_col = (0.92, 0.72, 0.05, 0.88)
-        title_col  = (255, 210, 60)
-    elif quality >= 0.40:
-        border_col = (0.92, 0.50, 0.05, 0.88)
-        title_col  = (255, 155, 50)
-    else:
-        border_col = (0.90, 0.12, 0.06, 0.88)
-        title_col  = (255, 75, 55)
-
-    _rrect(px, py, pw, ph, (0.03, 0.04, 0.08, 0.93), r=10)
-    _border(px, py, pw, ph, border_col, 2.0)
-
-    cx  = px + pw // 2
-    lh  = max(16, int(H * 0.024))
-
-    # Título
-    type_name = "PARALELO" if pk_type == 'parallel' else "DIAGONAL"
-    draw_text(cx, py + ph - 7, f"ESTACIONAMIENTO {type_name}",
-              fonts['label'], color=(155, 165, 175), anchor="topcenter")
-
-    # Espacio detectado
-    draw_text(cx, py + ph - 7 - lh - 2, slot_lbl,
-              fonts['title'], color=title_col, anchor="topcenter")
-
-    # Tres indicadores: Espacio / Ángulo / Detenido
-    iy      = py + ph - 7 - lh * 2 - 10
-    col_ok  = (80,  230, 110)
-    col_bad = (240, 70,  55)
-    checks  = [
-        ("Espacio",  in_slot,  "✓ Dentro" if in_slot  else "✗ Fuera"),
-        ("Angulo",   angle_ok, "✓ OK"     if angle_ok else "✗ Corregir"),
-        ("Detenido", speed_ok, "✓ Parado" if speed_ok else "✗ Frena"),
-    ]
-    ind_w = pw // 3
-    for i, (label, ok, txt) in enumerate(checks):
-        ix = px + 8 + i * ind_w
-        draw_text(ix + ind_w // 2, iy, label,
-                  fonts['small'], color=(120, 128, 138), anchor="topcenter")
-        draw_text(ix + ind_w // 2, iy - lh + 2, txt,
-                  fonts['small'], color=col_ok if ok else col_bad, anchor="topcenter")
-
-    # Barra de calidad
-    bar_x = px + 10
-    bar_y = py + 38
-    bar_w = pw - 20
-    bar_h = 10
-    _rect(bar_x, bar_y, bar_w, bar_h, (0.08, 0.09, 0.12, 1.0))
-    if quality > 0:
-        if quality < 0.5:
-            rc, gc, bc = 0.88, quality * 1.6, 0.05
-        else:
-            rc, gc, bc = 0.88 * (1.0 - quality) * 2, 0.78, 0.05
-        _rect(bar_x, bar_y, int(bar_w * quality), bar_h, (rc, gc, bc, 1.0))
-    _border(bar_x, bar_y, bar_w, bar_h, (0.20, 0.22, 0.28, 0.80), 1.0)
-    q_pct = int(quality * 100)
-    draw_text(bar_x + bar_w + 6, bar_y + bar_h,
-              f"{q_pct}%", fonts['small'], color=title_col, anchor="bottomleft")
-
-    # Penalización estimada si confirma ahora
-    if penalty > 0:
-        pen_txt = f"Confirmando ahora: -{penalty} pts"
-        pen_col = (230, 100, 60)
-    else:
-        pen_txt = "Confirmando ahora: sin penalización"
-        pen_col = (80, 220, 100)
-    draw_text(cx, bar_y - 3, pen_txt,
-              fonts['small'], color=pen_col, anchor="bottomcenter")
-
-    # Botón ENTER — parpadeante para llamar la atención
-    if not confirmed:
-        draw_text(cx, py + 6, "[ ENTER ]  Confirmar estacionamiento",
-                  fonts['label'], color=(255, 230, 80), anchor="bottomcenter")
-    else:
-        draw_text(cx, py + 6, "✓ Confirmado — sal del espacio",
-                  fonts['label'], color=(80, 230, 110), anchor="bottomcenter")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -409,7 +266,6 @@ def draw_feedback_flash(W, H, feedbacks, fonts):
     msg_h  = max(32, int(H * 0.052))
     pw     = int(W * 0.50)
     px     = W//2 - pw//2
-    # Parte superior de la pantalla, centrada horizontalmente
     py     = H - 12 - msg_h
 
     alpha  = fb.alpha
@@ -497,17 +353,23 @@ def draw_speed_digital(W, H, speed_kmh, fonts):
 # INDICADOR DE MARCHA
 # ─────────────────────────────────────────────────────────────────────────────
 
-def draw_gear_indicator(W, H, speed, is_reversing, fonts):
+def draw_gear_indicator(W, H, speed, is_reversing, fonts, gear=1, rpm=900):
     dash_h = int(H * 0.22)
     cx = int(W * 0.10)
     cy = dash_h + int(H * 0.07)
     pw = int(W * 0.07)
     ph = int(H * 0.075)
     px = cx - pw//2; py = cy - ph//2
-    if is_reversing:
-        letter, col, bg = "R", (255,80,60), (0.28,0.05,0.04,0.92)
+    if gear == -1:
+        letter, col, bg = "R", (255,80,60),   (0.28,0.05,0.04,0.92)
+    elif gear == 0:
+        letter, col, bg = "N", (220,200,80),  (0.20,0.18,0.02,0.92)
     else:
-        letter, col, bg = "D", (60,210,90), (0.04,0.18,0.06,0.92)
+        letter = str(gear)
+        if rpm > 5500:
+            col, bg = (255,120,40), (0.24,0.10,0.02,0.92)
+        else:
+            col, bg = (60,210,90),  (0.04,0.18,0.06,0.92)
     _rrect(px, py, pw, ph, bg, r=8)
     draw_text(cx, py+ph-6, "MARCHA", fonts['label'], color=(140,148,145), anchor="topcenter")
     draw_text(cx, py+10, letter, fonts['big_num'], color=col, anchor="bottomcenter")
@@ -546,7 +408,11 @@ def draw_controls_legend(W, H, fonts):
         ("W/UP",    "Acelerar"),
         ("S/DOWN",  "Frenar/Rev"),
         ("A/D",     "Girar"),
+        ("Q",       "Subir marcha"),
+        ("E",       "Bajar marcha"),
+        ("ENTER",   "Confirmar estac."),
         ("H",       "Ocultar/mostrar guia"),
+        ("F3",      "Rendimiento PC"),
         ("F11",     "Pantalla completa"),
         ("ESC",     "Salir"),
     ]
@@ -561,8 +427,11 @@ def draw_controls_legend(W, H, fonts):
               color=(145,150,145), anchor="topcenter")
     for i,(key,desc) in enumerate(lines):
         ry = py+ph-pad-lh*(i+1)-4
-        draw_text(px+10, ry+lh, key, fonts['small'],
-                  color=(200,192,115), anchor="topleft")
+        # Resaltar teclas de marcha en azul claro
+        kcol = (130,200,255) if key in ("Q","E") else \
+               (255,230,80)  if key == "ENTER"   else \
+               (160,220,160) if key == "F3"      else (200,192,115)
+        draw_text(px+10, ry+lh, key, fonts['small'], color=kcol, anchor="topleft")
         draw_text(px+int(pw*0.42), ry+lh, desc, fonts['small'],
                   color=(168,174,170), anchor="topleft")
 
@@ -685,6 +554,125 @@ def draw_minimap(W, H, vehicle_x, vehicle_z, vehicle_angle, cp_done, fonts):
     glVertex2f(vx + al*math.sin(am)*sx/sx, vy + al*math.cos(am)*sz/sz)
     glEnd()
     glLineWidth(1.0); glDisable(GL_BLEND)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OVERLAY DE RENDIMIENTO  (F3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _perf_bar(x, y, w, h, ratio, col_fill, label, val_txt, fonts):
+    _rect(x, y, w, h, (0.06,0.07,0.10,1.0))
+    _rect(x, y, max(2,int(w*min(ratio,1.0))), h, col_fill)
+    _border(x, y, w, h, (0.18,0.20,0.26,0.90), 1.0)
+    draw_text(x+5,   y+h, label,   fonts['small'], color=(140,148,158), anchor="bottomleft")
+    draw_text(x+w-4, y+h, val_txt, fonts['small'], color=(210,218,225), anchor="bottomright")
+
+
+def draw_perf_overlay(W, H, perf_data, fonts):
+    pw=int(W*0.28); lh=max(16,int(H*0.026)); pad=10
+    ph=lh*9+pad*3+14; px=pad; py=H-ph-pad
+    _rrect(px,py,pw,ph,(0.03,0.04,0.09,0.93),r=10)
+    _border(px,py,pw,ph,(0.28,0.35,0.48,0.90),1.8)
+    cx=px+pw//2; bw=pw-pad*2-2; bh=max(8,int(lh*0.55))
+    ty=py+ph-8
+    draw_text(cx,ty,"RENDIMIENTO  [ F3 ]",fonts['label'],color=(170,185,200),anchor="topcenter")
+    ty-=lh+4; _border(px+6,ty+lh-2,pw-12,1,(0.20,0.25,0.35,0.70),1.0); ty-=4
+    # FPS
+    fps=perf_data.get('fps',0.0); ft=perf_data.get('fps_target',60); fr=fps/max(ft,1)
+    fc=(0.20,0.85,0.30,1.0) if fr>0.75 else (0.88,0.70,0.05,1.0) if fr>0.45 else (0.88,0.12,0.06,1.0)
+    _perf_bar(px+pad,ty-bh,bw,bh,fr,fc,"FPS",f"{fps:.0f} / {ft}",fonts); ty-=lh
+    # CPU
+    cp=perf_data.get('cpu_pct',0.0)
+    cc=(0.20,0.80,0.28,1.0) if cp<50 else (0.88,0.68,0.05,1.0) if cp<80 else (0.88,0.12,0.06,1.0)
+    _perf_bar(px+pad,ty-bh,bw,bh,cp/100,cc,"CPU",f"{cp:.1f}%",fonts); ty-=lh
+    # RAM
+    rp=perf_data.get('ram_pct',0.0); rm=perf_data.get('ram_mb',0.0)
+    rc=(0.20,0.80,0.28,1.0) if rp<60 else (0.88,0.68,0.05,1.0) if rp<85 else (0.88,0.12,0.06,1.0)
+    _perf_bar(px+pad,ty-bh,bw,bh,rp/100,rc,"RAM",f"{rm:.0f} MB ({rp:.0f}%)",fonts); ty-=lh
+    # GPU
+    gp=perf_data.get('gpu_pct',-1); gv=perf_data.get('gpu_vram_mb',-1)
+    if gp>=0:
+        gc=(0.20,0.80,0.28,1.0) if gp<60 else (0.88,0.68,0.05,1.0) if gp<85 else (0.88,0.12,0.06,1.0)
+        _perf_bar(px+pad,ty-bh,bw,bh,gp/100,gc,"GPU",
+                  f"{gp:.0f}%  {gv:.0f}MB VRAM" if gv>=0 else f"{gp:.0f}%",fonts)
+    else:
+        _perf_bar(px+pad,ty-bh,bw,bh,0,(0.20,0.22,0.28,1.0),"GPU","No disponible",fonts)
+    ty-=lh+4; _border(px+6,ty+lh,pw-12,1,(0.20,0.25,0.35,0.70),1.0); ty-=2
+    mc=int(bw/6.5)
+    for lbl,val in [("SO",  perf_data.get('os_name','—')),
+                    ("CPU", perf_data.get('cpu_name','—')),
+                    ("GPU", perf_data.get('gpu_name','—') or 'No detectada'),
+                    ("RAM", f"{perf_data.get('ram_total',0.0):.1f} GB total")]:
+        draw_text(px+pad+2, ty, lbl+":", fonts['small'], color=(145,158,170), anchor="topcenter")
+        vd=val if len(val)<=mc else val[:mc-1]+"…"
+        draw_text(px+pad+int(bw*0.28), ty, vd, fonts['small'], color=(200,210,220), anchor="topleft")
+        ty-=lh
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ESTACIONAMIENTO  (confirmar con ENTER)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def parking_penalty_from_quality(quality):
+    if quality >= 0.80: return 0
+    if quality >= 0.60: return 5
+    if quality >= 0.40: return 10
+    return 15
+
+
+def draw_parking_hud(W, H, parking_state, fonts):
+    if not parking_state or not parking_state.get('active', False):
+        return
+    quality  = parking_state.get('quality',  0.0)
+    in_slot  = parking_state.get('in_slot',  False)
+    speed_ok = parking_state.get('speed_ok', False)
+    angle_ok = parking_state.get('angle_ok', False)
+    slot_lbl = parking_state.get('slot_label','—')
+    pk_type  = parking_state.get('type',     'parallel')
+    confirmed= parking_state.get('confirmed', False)
+    penalty  = parking_penalty_from_quality(quality)
+
+    pw=int(W*0.27); ph=int(H*0.23)
+    px=W//2-pw//2;  py=H-ph-int(H*0.24)
+
+    if quality>=0.80:   bc=(0.10,0.88,0.30,0.95); tc=(80,240,110)
+    elif quality>=0.60: bc=(0.92,0.72,0.05,0.88); tc=(255,210,60)
+    elif quality>=0.40: bc=(0.92,0.50,0.05,0.88); tc=(255,155,50)
+    else:               bc=(0.90,0.12,0.06,0.88); tc=(255,75,55)
+
+    _rrect(px,py,pw,ph,(0.03,0.04,0.08,0.93),r=10)
+    _border(px,py,pw,ph,bc,2.0)
+    cx=px+pw//2; lh=max(16,int(H*0.024))
+    tn="PARALELO" if pk_type=='parallel' else "DIAGONAL"
+    draw_text(cx,py+ph-7,f"ESTACIONAMIENTO {tn}",
+              fonts['label'],color=(155,165,175),anchor="topcenter")
+    draw_text(cx,py+ph-7-lh-2,slot_lbl,fonts['title'],color=tc,anchor="topcenter")
+
+    iy=py+ph-7-lh*2-10; ind_w=pw//3
+    for i,(lbl,ok,txt) in enumerate([
+            ("Espacio", in_slot,  "✓ Dentro"  if in_slot  else "✗ Fuera"),
+            ("Angulo",  angle_ok, "✓ OK"      if angle_ok else "✗ Corregir"),
+            ("Detenido",speed_ok, "✓ Parado"  if speed_ok else "✗ Frena")]):
+        ix=px+8+i*ind_w
+        draw_text(ix+ind_w//2,iy,lbl,fonts['small'],color=(120,128,138),anchor="topcenter")
+        draw_text(ix+ind_w//2,iy-lh+2,txt,fonts['small'],
+                  color=(80,230,110) if ok else (240,70,55),anchor="topcenter")
+
+    bx=px+10; by=py+38; bw2=pw-20; bh2=10
+    _rect(bx,by,bw2,bh2,(0.08,0.09,0.12,1.0))
+    if quality>0:
+        rc=0.88 if quality<0.5 else 0.88*(1.0-quality)*2
+        gc=quality*1.6 if quality<0.5 else 0.78
+        _rect(bx,by,int(bw2*quality),bh2,(rc,gc,0.05,1.0))
+    _border(bx,by,bw2,bh2,(0.20,0.22,0.28,0.80),1.0)
+    draw_text(bx+bw2+6,by+bh2,f"{int(quality*100)}%",
+              fonts['small'],color=tc,anchor="bottomleft")
+    pt=f"Confirmando ahora: -{penalty} pts" if penalty>0 else "Confirmando ahora: sin penalización"
+    draw_text(cx,by-3,pt,fonts['small'],
+              color=(230,100,60) if penalty>0 else (80,220,100),anchor="bottomcenter")
+    btn="[ ENTER ]  Confirmar estacionamiento" if not confirmed else "✓ Confirmado — sal del espacio"
+    draw_text(cx,py+6,btn,fonts['label'],
+              color=(255,230,80) if not confirmed else (80,230,110),anchor="bottomcenter")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

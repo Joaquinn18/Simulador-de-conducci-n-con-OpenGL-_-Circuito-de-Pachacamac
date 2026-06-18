@@ -1,12 +1,3 @@
-# scene.py  —  Versión 4.3
-"""
-Escena 3D del simulador: Circuito oficial Touring Ruta A.
-Cambios v4.3:
-  - Óvalo totalmente conectado a la recta oeste con carril de entrada/salida
-  - Zona de transición NW→Óvalo con asfalto continuo (sin huecos)
-  - Delimitadores visuales de zona (franjas de colores) para cada fase
-  - Banderines de colores por zona: amarillo=paralelo, naranja=diagonal, etc.
-"""
 
 import math
 from OpenGL.GL import *

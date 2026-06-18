@@ -1,9 +1,4 @@
-# collision.py  —  Versión 4.2
-"""
-Límites ampliados para permitir el giro completo del óvalo.
-El óvalo tiene centro en x=-36 y radio exterior de 12m → llega a x=-48.
-Ampliamos min_x a -53 con margen extra.
-"""
+
 import math
 
 TRACK_BOUNDS = {

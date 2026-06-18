@@ -1,20 +1,3 @@
-# cabin.py  —  Versión 3.0
-"""
-Cabina del conductor en 2D.
-
-CAMBIOS vs v2:
-  - Velocímetros analógicos ahora tienen NÚMEROS visibles en los arcos
-    (0, 20, 40, 60, 80 km/h  y  0, 2000, 4000, 6000, 8000 RPM)
-  - El texto usa text_renderer.py (texturas OpenGL), perfectamente legible.
-  - Panel del tablero más limpio y organizado.
-  - Volante con mejor aspecto visual.
-  - Espejos laterales mejorados.
-
-COORDENADAS:
-  glOrtho(0, W, 0, H)  →  Y=0 abajo, Y=H arriba.
-  El tablero ocupa el 22% inferior (y de 0 a H*0.22).
-  El marco del parabrisas ocupa los bordes.
-"""
 
 import math
 import pygame

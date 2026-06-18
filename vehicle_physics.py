@@ -1,161 +1,161 @@
-# vehicle_physics.py
-"""
-Física del vehículo para el simulador de conducción.
-Modelo cinemático de bicicleta (Ackermann simplificado):
-- El giro no es instantáneo: depende de la velocidad y el ángulo de rueda
-- Hay inercia: el auto no frena ni acelera de golpe
-- La velocidad en reversa es limitada (como un auto real)
-"""
 
 import math
 
+
+GEAR_TABLE = {
+    -1: (2.5,  800, 2500, 0.70),   # Reversa
+     0: (0.0,  800,  800, 0.00),   # Neutro
+     1: (3.2, 1000, 3500, 1.10),   # 1ª
+     2: (5.5, 1200, 4000, 1.00),   # 2ª
+     3: (8.0, 1400, 4500, 0.95),   # 3ª
+     4: (11.0,1600, 5000, 0.88),   # 4ª
+     5: (14.5,1800, 5500, 0.80),   # 5ª
+     6: (19.0,2000, 6000, 0.72),   # 6ª
+}
+RPM_IDLE        = 850
+RPM_REDLINE     = 6500
+RPM_MAX_DISPLAY = 8000
+
+
 class VehiclePhysics:
-    # Dimensiones del vehículo (en metros, escala 1:1 con OpenGL)
-    WHEELBASE    = 2.70   # distancia entre ejes (largo del auto)
-    WIDTH        = 1.80   # ancho del auto (para colisiones)
-    LENGTH       = 4.20   # largo del auto (para colisiones)
-
-    # Límites de velocidad
-    MAX_SPEED_FWD = 8.0   # m/s adelante (~29 km/h, suficiente para la pista)
-    MAX_SPEED_REV = 2.5   # m/s reversa
-    MAX_STEER_DEG = 30.0  # ángulo máximo de volante en grados
-
-    # Física
-    ACCEL_RATE    = 3.5   # m/s² al presionar gas
-    BRAKE_RATE    = 7.0   # m/s² al frenar (más fuerte que el gas)
-    DRAG_RATE     = 2.0   # m/s² de fricción natural al soltar el gas
-    STEER_RATE    = 80.0  # grados/segundo de giro del volante
-    STEER_RETURN  = 120.0 # grados/segundo de retorno al centro
+    WHEELBASE    = 2.70
+    WIDTH        = 1.80
+    LENGTH       = 4.20
+    MAX_SPEED_FWD = 8.0
+    MAX_SPEED_REV = 2.5
+    MAX_STEER_DEG = 30.0
+    BRAKE_RATE    = 7.0
+    DRAG_RATE     = 1.8
+    STEER_RATE    = 80.0
+    STEER_RETURN  = 120.0
 
     def __init__(self, start_x=0.0, start_z=5.0, start_angle=0.0):
-        # Posición y orientación en el mundo
-        self.x     = start_x      # posición X en el plano
-        self.z     = start_z      # posición Z en el plano
-        self.angle = start_angle  # ángulo de orientación en grados (0 = mirando hacia -Z)
-
-        # Estado dinámico
-        self.speed        = 0.0   # velocidad actual en m/s (positivo=adelante, negativo=reversa)
-        self.steer_angle  = 0.0   # ángulo actual del volante en grados
-        self.is_braking   = False  # ¿está pisando el freno?
-        self.is_reversing = False  # ¿está en reversa?
-
-        # Para suavizar la cámara (bob y vibración)
-        self.wheel_rotation = 0.0  # rotación acumulada de las ruedas (para animación)
-
-        # Estado del examen (para mostrar al usuario qué hacer)
-        self.exam_phase    = 0     # fase actual del recorrido
-        self.cones_hit     = 0     # cuántos conos tocó
-        self.penalty_pts   = 0     # puntos de penalización acumulados
-
-    def update(self, keys_pressed, dt):
-        """
-        Actualiza el estado del vehículo en base a las teclas presionadas.
-        keys_pressed es el dict de pygame.key.get_pressed()
-        dt es el delta de tiempo en segundos desde el último frame.
-        """
-        from pygame.locals import K_w, K_s, K_a, K_d, K_UP, K_DOWN, K_LEFT, K_RIGHT
-
-        gas    = keys_pressed[K_w] or keys_pressed[K_UP]
-        brake  = keys_pressed[K_s] or keys_pressed[K_DOWN]
-        left   = keys_pressed[K_a] or keys_pressed[K_LEFT]
-        right  = keys_pressed[K_d] or keys_pressed[K_RIGHT]
-
-        # ── Lógica de aceleración / freno / reversa ──────────────────────
+        self.x     = start_x
+        self.z     = start_z
+        self.angle = start_angle
+        self.speed        = 0.0
+        self.steer_angle  = 0.0
         self.is_braking   = False
         self.is_reversing = False
+        self.wheel_rotation = 0.0
+        self.exam_phase  = 0
+        self.cones_hit   = 0
+        self.penalty_pts = 0
+        # Transmisión manual
+        self.gear = 1
+        self.rpm  = RPM_IDLE
 
-        if gas:
-            if self.speed >= 0:
-                # Acelerar hacia adelante
-                self.speed = min(self.speed + self.ACCEL_RATE * dt, self.MAX_SPEED_FWD)
-            else:
-                # Estábamos en reversa, el gas actúa como freno
+    def shift_up(self):
+        if self.gear < 6:
+            self.gear += 1
+            return True
+        return False
+
+    def shift_down(self):
+        if self.gear > -1:
+            self.gear -= 1
+            return True
+        return False
+
+    @property
+    def gear_label(self):
+        if self.gear ==  0: return "N"
+        if self.gear == -1: return "R"
+        return str(self.gear)
+
+    def update(self, keys_pressed, dt):
+        from pygame.locals import K_w, K_s, K_a, K_d, K_UP, K_DOWN, K_LEFT, K_RIGHT
+        gas   = keys_pressed[K_w] or keys_pressed[K_UP]
+        brake = keys_pressed[K_s] or keys_pressed[K_DOWN]
+        left  = keys_pressed[K_a] or keys_pressed[K_LEFT]
+        right = keys_pressed[K_d] or keys_pressed[K_RIGHT]
+
+        self.is_braking   = False
+        self.is_reversing = self.gear == -1
+
+        if self.gear == 0:
+            if self.speed > 0:  self.speed = max(self.speed - self.DRAG_RATE * dt, 0.0)
+            elif self.speed < 0: self.speed = min(self.speed + self.DRAG_RATE * dt, 0.0)
+
+        elif self.gear == -1:
+            if gas:
+                self.speed = max(self.speed - 2.5 * dt, -self.MAX_SPEED_REV)
+            elif brake:
                 self.speed = min(self.speed + self.BRAKE_RATE * dt, 0.0)
                 self.is_braking = True
-
-        elif brake:
-            if self.speed > 0.05:
-                # Frenar estando en movimiento hacia adelante
-                self.speed = max(self.speed - self.BRAKE_RATE * dt, 0.0)
-                self.is_braking = True
-            elif self.speed <= 0.05:
-                # Entrar en reversa
-                self.speed = max(self.speed - self.ACCEL_RATE * dt, -self.MAX_SPEED_REV)
-                self.is_reversing = True
-
-        else:
-            # Sin input: fricción natural desacelera
-            if self.speed > 0:
-                self.speed = max(self.speed - self.DRAG_RATE * dt, 0.0)
-            elif self.speed < 0:
+            else:
                 self.speed = min(self.speed + self.DRAG_RATE * dt, 0.0)
 
-        # ── Lógica del volante ───────────────────────────────────────────
-        if left:
-            self.steer_angle = max(self.steer_angle - self.STEER_RATE * dt,
-                                   -self.MAX_STEER_DEG)
-        elif right:
-            self.steer_angle = min(self.steer_angle + self.STEER_RATE * dt,
-                                    self.MAX_STEER_DEG)
         else:
-            # El volante vuelve al centro solo (más rápido si va más rápido)
-            speed_factor = min(abs(self.speed) / self.MAX_SPEED_FWD + 0.3, 1.0)
-            return_speed = self.STEER_RETURN * speed_factor * dt
-            if self.steer_angle > 0:
-                self.steer_angle = max(self.steer_angle - return_speed, 0.0)
-            elif self.steer_angle < 0:
-                self.steer_angle = min(self.steer_angle + return_speed, 0.0)
-
-        # ── Modelo cinemático de bicicleta (Ackermann) ───────────────────
-        # A mayor velocidad, menos efecto del volante (comportamiento real)
-        if abs(self.speed) > 0.01:
-            steer_rad = math.radians(self.steer_angle)
-
-            # Radio de giro basado en el largo del auto y el ángulo del volante
-            if abs(steer_rad) > 0.001:
-                turn_radius = self.WHEELBASE / math.tan(steer_rad)
-                # Velocidad angular del chasis (rad/s)
-                angular_velocity = self.speed / turn_radius
+            g     = GEAR_TABLE[self.gear]
+            smax  = g[0]; acf = g[3]
+            rpml  = g[1]; rpmh = g[2]
+            if rpml <= self.rpm <= rpmh:
+                pf = 1.0
+            elif self.rpm < rpml:
+                pf = max(0.25, self.rpm / rpml)
             else:
-                angular_velocity = 0.0
+                pf = max(0.10, 1.0 - (self.rpm - rpmh) / 2000)
+            ar = 3.5 * acf * pf
 
-            # Actualizar ángulo de orientación
-            self.angle += math.degrees(angular_velocity) * dt
+            if gas:
+                if self.speed < smax:
+                    self.speed = min(self.speed + ar * dt, smax)
+                elif self.speed > smax:
+                    self.speed = max(self.speed - self.DRAG_RATE * 1.5 * dt, smax)
+            elif brake:
+                if self.speed > 0.05:
+                    self.speed = max(self.speed - self.BRAKE_RATE * dt, 0.0)
+                    self.is_braking = True
+                else:
+                    self.speed = 0.0
+            else:
+                drag = self.DRAG_RATE * (1.0 + (3 - min(self.gear, 3)) * 0.3)
+                if self.speed > 0:  self.speed = max(self.speed - drag * dt, 0.0)
+                elif self.speed < 0: self.speed = min(self.speed + drag * dt, 0.0)
 
-            # Mover el vehículo en la dirección que apunta
-            angle_rad = math.radians(self.angle)
-            self.x += self.speed * math.sin(angle_rad) * dt
-            self.z -= self.speed * math.cos(angle_rad) * dt
+        # RPM
+        if self.gear == 0:
+            target_rpm = RPM_IDLE
+        elif self.gear == -1:
+            target_rpm = RPM_IDLE + abs(self.speed) / max(self.MAX_SPEED_REV,0.001) * 2000
+        else:
+            g = GEAR_TABLE[self.gear]
+            r = abs(self.speed) / max(g[0], 0.001)
+            target_rpm = g[1] + r * (g[2] - g[1])
+            if gas: target_rpm = min(target_rpm * 1.12, RPM_REDLINE)
+        rpm_spd = 4000 * dt
+        self.rpm = self.rpm + rpm_spd if target_rpm > self.rpm else self.rpm - rpm_spd * 0.6
+        self.rpm = max(RPM_IDLE, min(self.rpm, RPM_REDLINE))
 
-        # Rotación de ruedas para animación
-        self.wheel_rotation += self.speed * dt * 30.0  # 30 = escala visual
+        # Volante
+        if left:
+            self.steer_angle = max(self.steer_angle - self.STEER_RATE * dt, -self.MAX_STEER_DEG)
+        elif right:
+            self.steer_angle = min(self.steer_angle + self.STEER_RATE * dt,  self.MAX_STEER_DEG)
+        else:
+            sf = min(abs(self.speed) / max(self.MAX_SPEED_FWD, 0.01) + 0.3, 1.0)
+            rs = self.STEER_RETURN * sf * dt
+            if self.steer_angle > 0:   self.steer_angle = max(self.steer_angle - rs, 0.0)
+            elif self.steer_angle < 0: self.steer_angle = min(self.steer_angle + rs, 0.0)
+
+        # Cinemática
+        if abs(self.speed) > 0.01:
+            sr = math.radians(self.steer_angle)
+            av = (self.speed / (self.WHEELBASE / math.tan(sr))) if abs(sr) > 0.001 else 0.0
+            self.angle += math.degrees(av) * dt
+            ar2 = math.radians(self.angle)
+            self.x += self.speed * math.sin(ar2) * dt
+            self.z -= self.speed * math.cos(ar2) * dt
+        self.wheel_rotation += self.speed * dt * 30.0
 
     @property
     def speed_kmh(self):
-        """Velocidad en km/h para mostrar en el velocímetro."""
         return abs(self.speed) * 3.6
 
     def get_corners(self):
-        """
-        Devuelve las 4 esquinas del vehículo en el mundo (para colisiones AABB).
-        Necesario para detectar si el auto tocó un cono o salió de la pista.
-        """
-        hw = self.WIDTH / 2
-        hl = self.LENGTH / 2
-        angle_rad = math.radians(self.angle)
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-
-        # Las 4 esquinas relativas al centro del auto
-        local_corners = [
-            (-hw, -hl), ( hw, -hl),
-            ( hw,  hl), (-hw,  hl)
-        ]
-
-        world_corners = []
-        for lx, lz in local_corners:
-            wx = self.x + lx * cos_a - lz * sin_a
-            wz = self.z + lx * sin_a + lz * cos_a
-            world_corners.append((wx, wz))
-
-        return world_corners
+        hw = self.WIDTH / 2; hl = self.LENGTH / 2
+        a  = math.radians(self.angle)
+        ca = math.cos(a);  sa = math.sin(a)
+        return [(self.x + lx*ca - lz*sa, self.z + lx*sa + lz*ca)
+                for lx,lz in [(-hw,-hl),(hw,-hl),(hw,hl),(-hw,hl)]]

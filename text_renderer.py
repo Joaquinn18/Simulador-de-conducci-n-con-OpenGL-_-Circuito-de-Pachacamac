@@ -1,24 +1,3 @@
-# text_renderer.py
-"""
-Sistema de renderizado de texto para PyOpenGL.
-
-PROBLEMA CON EL CÓDIGO ANTERIOR:
-  glWindowPos2i + glDrawPixels funciona en algunos sistemas pero es
-  inconsistente: depende del driver de video, no respeta la pila de matrices
-  OpenGL, y en muchos entornos con doble buffer el texto aparece en el
-  buffer equivocado o completamente negro.
-
-SOLUCIÓN CORRECTA:
-  Convertir el texto (renderizado por pygame) en una textura OpenGL.
-  Flujo:
-    1. pygame.font.render() → Surface RGBA
-    2. pygame.image.tostring() → bytes crudos
-    3. glGenTextures / glTexImage2D → textura en GPU
-    4. Dibujar un quad con esa textura en modo ortográfico
-
-  Las texturas se cachean por (texto, color, fuente) para no regenerarlas
-  cada frame, lo que las hace tan rápidas como un quad normal.
-"""
 
 import pygame
 from OpenGL.GL import *
