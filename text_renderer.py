@@ -44,22 +44,7 @@ def draw_text(x: float, y: float, text: str,
               color: tuple = (255, 255, 255),
               anchor: str = "topleft",
               alpha: float = 1.0):
-    """
-    Dibuja texto en coordenadas de pantalla.
-
-    IMPORTANTE: debe llamarse dentro de un bloque begin_2d() / end_2d()
-    (modo ortográfico con Y=0 abajo).
-
-    Parámetros:
-        x, y    : posición en píxeles. El origen depende de 'anchor'.
-        text    : cadena a dibujar (puede incluir caracteres Unicode básicos).
-        font    : instancia de pygame.font.Font o SysFont.
-        color   : tuple (R, G, B) en rango 0–255.
-        anchor  : "topleft", "topcenter", "topright",
-                  "midleft", "center", "midright",
-                  "bottomleft", "bottomcenter", "bottomright"
-        alpha   : transparencia 0.0 (invisible) a 1.0 (opaco).
-    """
+    
     if not text:
         return
 

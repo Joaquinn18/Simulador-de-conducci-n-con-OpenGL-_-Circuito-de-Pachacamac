@@ -5,9 +5,7 @@ from OpenGL.GL import *
 
 from text_renderer import draw_text
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PALETA
-# ─────────────────────────────────────────────────────────────────────────────
+
 COL_FRAME    = (0.07, 0.065, 0.060, 1.00)
 COL_DASH     = (0.09, 0.085, 0.075, 1.00)
 COL_LEATHER  = (0.16, 0.120, 0.085, 1.00)
@@ -22,9 +20,7 @@ def _col3(t):
     return t[0], t[1], t[2]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS GEOMÉTRICOS 2D
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def _filled_rect(x, y, w, h, col):
     glColor4f(*col) if len(col) == 4 else glColor3f(*col)
@@ -70,9 +66,7 @@ def _line(x0, y0, x1, y1, col, width=1.0):
     glLineWidth(1.0)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VELOCÍMETRO ANALÓGICO CON NÚMEROS
-# ─────────────────────────────────────────────────────────────────────────────
+
 # Arco: de 225° (izq, 7h) a -45° (der, 5h) = 270° de barrido
 ARC_START = 225   # grados
 ARC_SWEEP = 270   # grados totales
@@ -535,9 +529,7 @@ def _draw_hand(wCx, wCy, wR, steer_norm, side):
     glPopMatrix()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FUNCIÓN PÚBLICA PRINCIPAL
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def draw_cabin_2d(screen_w, screen_h, steer_norm, speed_kmh, rpm_val,
                   is_braking, bob_phase, fonts):

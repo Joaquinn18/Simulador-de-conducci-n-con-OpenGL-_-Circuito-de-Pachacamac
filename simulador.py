@@ -1,12 +1,11 @@
-
-
+# simulador.py  —  Versión Final
 import sys
 import math
 import platform as sys_platform
 import pygame
 from pygame.locals import (DOUBLEBUF, OPENGL, QUIT, KEYDOWN,
-                            K_ESCAPE, K_F11, K_F3, K_h, K_q, K_e, K_RETURN,
-                            RESIZABLE, FULLSCREEN)
+                            K_ESCAPE, K_F11, K_F3, K_h, K_c, K_q, K_e, K_p,
+                            K_RETURN, RESIZABLE, FULLSCREEN)
 from OpenGL.GL import *
 
 from vehicle_physics import VehiclePhysics, RPM_MAX_DISPLAY
@@ -16,6 +15,7 @@ from scene           import (draw_full_scene, ALL_CONES, cone_hit_states,
 from collision       import (check_cone_collision, clamp_to_track, CONE_PENALTY)
 from cabin           import draw_cabin_2d
 from hud             import (begin_2d, end_2d,
+                              draw_text,
                               draw_guide_panel,
                               draw_penalty_hud,
                               draw_speed_digital,
@@ -29,6 +29,7 @@ from hud             import (begin_2d, end_2d,
                               draw_parking_hud,
                               draw_perf_overlay,
                               parking_penalty_from_quality)
+from export_pdf      import exportar_resultado
 from text_renderer   import clear_text_cache
 
 try:
@@ -41,9 +42,9 @@ except ImportError: _HAS_GPUTIL = False
 BASE_W, BASE_H = 1280, 720
 TARGET_FPS     = 60
 
-# ═══════════════════════════════════════════════════════════════════════════
+
 # CHECKPOINTS
-# ═══════════════════════════════════════════════════════════════════════════
+
 CHECKPOINTS = [
     {
         "name":   "ENTRADA AL CIRCUITO",
@@ -66,6 +67,13 @@ CHECKPOINTS = [
         "detail": "Entra en uno de los 7 espacios amarillos",
         "color":  (0.30, 0.65, 0.95),
         "x":      (-22.0, 38.0), "z": (-43.0, -33.0),
+    },
+    {
+        "name":   "RECTA OESTE",
+        "tip":    "Gira a la izquierda y baja por la recta oeste",
+        "detail": "Carril izquierdo | te acercas al ovalo",
+        "color":  (0.40, 0.60, 1.00),
+        "x":      (-53.0, -30.0), "z": (-32.0,  22.0),
     },
     {
         "name":   "OVALO / ROTONDA",
@@ -95,23 +103,15 @@ FINISH_Z  = (29.0, 35.0)
 EVAL_CPS  = [cp for cp in CHECKPOINTS if not cp.get("start", False)]
 
 
-# ── Zonas permitidas según CPs completados ───────────────────────────────────
-# BARRIER_ZONES[i] = zona que está BLOQUEADA si cp_done[i-1] es False
-# (i = índice en EVAL_CPS, basado 0)
-# El vehículo NO puede entrar en la zona i+1 si no completó la i.
-# Cada barrera tiene: la caja que rebota, el mensaje, y qué cp_done index exige
+
 BARRIERS = [
-    # cp_done[0] = trocha completada → puedes ir a paralelo
-    {
-        "block_x": (-22.0, 38.0), "block_z": (-43.0, -33.0),  # zona paralelo
-        "requires": 0,            # necesita cp_done[0] (trocha)
-        "msg": "Completa primero la ZONA HABILIDAD 35 KPH",
-    },
+    {"block_x":(-22.0,38.0),"block_z":(-43.0,-33.0),"requires":0,
+     "msg":"Completa primero la ZONA HABILIDAD 35 KPH"},
     {"block_x":(-53.0,-22.0),"block_z":(-2.0,24.0),"requires":1,
      "msg":"Completa primero el ESTACIONAMIENTO EN PARALELO"},
-    {"block_x":(-14.0,38.0),"block_z":(-9.0,8.0),"requires":2,
+    {"block_x":(-14.0,38.0),"block_z":(-9.0,8.0),"requires":3,
      "msg":"Completa primero el OVALO / ROTONDA"},
-    {"block_x":(-14.0,10.0),"block_z":(20.0,35.0),"requires":3,
+    {"block_x":(-14.0,10.0),"block_z":(20.0,35.0),"requires":4,
      "msg":"Completa primero el ESTACIONAMIENTO DIAGONAL"},
 ]
 
@@ -148,9 +148,7 @@ def check_barriers(vehicle, cp_done):
     return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FUENTES
-# ═══════════════════════════════════════════════════════════════════════════
+
 def build_fonts(scale=1.0):
     def sz(s): return max(8, int(s * scale))
     try:
@@ -182,9 +180,7 @@ def build_fonts(scale=1.0):
         }.items()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# VENTANA / GL
-# ═══════════════════════════════════════════════════════════════════════════
+
 def create_window(fullscreen=False):
     if fullscreen:
         info = pygame.display.Info()
@@ -210,10 +206,6 @@ def calc_rpm(v):
     return v.rpm
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# ESTACIONAMIENTO
-# ═══════════════════════════════════════════════════════════════════════════
-
 _EP_X1=-18.0; _EP_SEP=5.5
 _PARALLEL_SLOTS=[(_EP_X1+i*_EP_SEP+2.75,-42.8,-36.8,2.3) for i in range(7)]
 _DIAGONAL_SLOTS=[(5.0+i*4.5-16.0+1.25,-7.5,-2.0,2.0) for i in range(7)]
@@ -221,8 +213,7 @@ _PARALLEL_ANGLES=[0.0,180.0]; _DIAGONAL_ANGLES=[24.4,204.4]
 
 def _adiff(a,b):
     d=abs(a-b)%360; return d if d<=180 else 360-d
-def _aerr(va,ts):
-    return min(_adiff(va,t) for t in ts)
+def _aerr(va,ts): return min(_adiff(va,t) for t in ts)
 
 def evaluate_parking(vehicle, zone_type):
     vx,vz=vehicle.x,vehicle.z
@@ -243,9 +234,6 @@ def evaluate_parking(vehicle, zone_type):
             'slot_label':f"Espacio {bi+1}",'confirmed':False}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# RENDIMIENTO
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _get_cpu_name():
     try:
@@ -257,10 +245,10 @@ def _get_cpu_name():
         elif sys_platform.system()=="Darwin":
             import subprocess
             return subprocess.check_output(["sysctl","-n","machdep.cpu.brand_string"],
-                                           stderr=subprocess.DEVNULL).decode().strip()
+                stderr=subprocess.DEVNULL).decode().strip()
         else:
-            for l in open("/proc/cpuinfo"):
-                if "model name" in l: return l.split(":",1)[1].strip()
+            for line in open("/proc/cpuinfo"):
+                if "model name" in line: return line.split(":",1)[1].strip()
     except Exception: pass
     return sys_platform.machine() or "CPU Desconocido"
 
@@ -275,8 +263,7 @@ def collect_perf(dt, fps):
         _perf_cache['gpu_name']=''
         if _HAS_GPUTIL:
             try:
-                gs=GPUtil.getGPUs()
-                if gs: _perf_cache['gpu_name']=gs[0].name
+                gs=GPUtil.getGPUs(); _perf_cache['gpu_name']=gs[0].name if gs else ''
             except: pass
     _perf_timer+=dt
     if _perf_timer>=0.5:
@@ -284,11 +271,9 @@ def collect_perf(dt, fps):
         if _HAS_PSUTIL:
             vm=psutil.virtual_memory()
             _perf_cache['cpu_pct']=psutil.cpu_percent(interval=None)
-            _perf_cache['ram_pct']=vm.percent
-            _perf_cache['ram_mb']=vm.used/1024**2
+            _perf_cache['ram_pct']=vm.percent; _perf_cache['ram_mb']=vm.used/1024**2
         else:
-            _perf_cache.setdefault('cpu_pct',0.0)
-            _perf_cache.setdefault('ram_pct',0.0)
+            _perf_cache.setdefault('cpu_pct',0.0); _perf_cache.setdefault('ram_pct',0.0)
             _perf_cache.setdefault('ram_mb',0.0)
         if _HAS_GPUTIL:
             try:
@@ -297,15 +282,12 @@ def collect_perf(dt, fps):
                 else:  _perf_cache['gpu_pct']=-1; _perf_cache['gpu_vram_mb']=-1
             except: _perf_cache['gpu_pct']=-1; _perf_cache['gpu_vram_mb']=-1
         else:
-            _perf_cache.setdefault('gpu_pct',-1)
-            _perf_cache.setdefault('gpu_vram_mb',-1)
+            _perf_cache.setdefault('gpu_pct',-1); _perf_cache.setdefault('gpu_vram_mb',-1)
     _perf_cache['fps']=fps; _perf_cache['fps_target']=TARGET_FPS
     return _perf_cache
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FEEDBACK  (cola simple, 1 activo a la vez)
-# ═══════════════════════════════════════════════════════════════════════════
+
 class FeedbackMsg:
     def __init__(self, text, color, duration=4.0):
         self.text     = text
@@ -326,9 +308,7 @@ class FeedbackMsg:
         return max(0.0, 1.0 - (self.elapsed-fade)/(self.duration*0.30))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# LOOP PRINCIPAL
-# ═══════════════════════════════════════════════════════════════════════════
+
 def main():
     pygame.init()
     surf, W, H = create_window(False)
@@ -368,10 +348,12 @@ def main():
     barrier_timer     = 0.0
     perf_visible      = False
     perf_data         = {}
-    _PARKING_CPS      = {2:'parallel', 4:'diagonal'}
+    controls_visible  = True
+    _PARKING_CPS      = {2:'parallel', 5:'diagonal'}
     parking_state     = None
     parking_confirmed = False
     _q_prev = False; _e_prev = False
+    pdf_exported      = False
 
     def enqueue(text, color, duration=4.0):
         """Añade un mensaje a la cola; no se acumulan más de 4."""
@@ -390,7 +372,7 @@ def main():
         dt   = min(clock.tick(TARGET_FPS)/1000.0, 0.05)
         tick += 1
 
-        # ── Eventos ────────────────────────────────────────────────────
+       
         for event in pygame.event.get():
             if event.type == QUIT:
                 running = False
@@ -400,14 +382,30 @@ def main():
                 elif event.key == K_F11:
                     fullscreen = not fullscreen
                     surf, W, H = create_window(fullscreen)
-                    scale = H/BASE_H
-                    fonts = build_fonts(scale)
-                    setup_gl(W, H)
-                    clear_text_cache()
+                    scale = H/BASE_H; fonts = build_fonts(scale)
+                    setup_gl(W, H); clear_text_cache()
                 elif event.key == K_F3:
                     perf_visible = not perf_visible
+                elif event.key == K_c:
+                    controls_visible = not controls_visible
                 elif event.key == K_h:
                     guide_visible = not guide_visible
+                elif event.key == K_p and finished and not pdf_exported:
+                    import datetime
+                    resultado = {
+                        'grade': grade, 'total_penalty': total_penalty,
+                        'cones_hit': len(cones_hit_set), 'cp_done': list(cp_done),
+                        'cp_names': [CHECKPOINTS[i+1]['name']
+                                     for i in range(len(cp_done)) if i+1 < len(CHECKPOINTS)],
+                        'result': result,
+                        'fecha': datetime.datetime.now().strftime("%d/%m/%Y  %H:%M"),
+                    }
+                    try:
+                        exportar_resultado(resultado)
+                        pdf_exported = True
+                    except Exception as ex:
+                        print(f"  ERROR PDF: {ex}")
+                    clear_text_cache(); pygame.quit(); sys.exit()
             elif event.type == pygame.VIDEORESIZE:
                 W, H = event.w, event.h
                 surf  = pygame.display.set_mode((W,H), DOUBLEBUF|OPENGL|RESIZABLE)
@@ -416,50 +414,39 @@ def main():
                 setup_gl(W, H)
                 clear_text_cache()
 
-        # ── Física ─────────────────────────────────────────────────────
         if not finished:
             keys = pygame.key.get_pressed()
             vehicle.update(keys, dt)
 
-            # Q = subir marcha, E = bajar marcha (antirebote)
-            q_now = keys[K_q]; e_now = keys[K_e]
+            q_now=keys[K_q]; e_now=keys[K_e]
             if q_now and not _q_prev:
-                if vehicle.shift_up():
-                    enqueue(f"Marcha {vehicle.gear_label}  ↑", (160,220,255), 1.5)
+                if vehicle.shift_up(): enqueue(f"Marcha {vehicle.gear_label} ^",(160,220,255),1.5)
             if e_now and not _e_prev:
-                if vehicle.shift_down():
-                    enqueue(f"Marcha {vehicle.gear_label}  ↓", (255,200,120), 1.5)
-            _q_prev = q_now; _e_prev = e_now
+                if vehicle.shift_down(): enqueue(f"Marcha {vehicle.gear_label} v",(255,200,120),1.5)
+            _q_prev=q_now; _e_prev=e_now
 
             clamp_to_track(vehicle)
 
-            # Evaluación de estacionamiento
             if cp_index in _PARKING_CPS and cp_entered:
-                new_ps = evaluate_parking(vehicle, _PARKING_CPS[cp_index])
+                new_ps=evaluate_parking(vehicle,_PARKING_CPS[cp_index])
                 if parking_state is not None:
-                    new_ps['confirmed'] = parking_state.get('confirmed', False)
-                parking_state = new_ps
+                    new_ps['confirmed']=parking_state.get('confirmed',False)
+                parking_state=new_ps
             else:
-                parking_state = None
+                parking_state=None
 
-            # ENTER: confirmar estacionamiento
             if (keys[K_RETURN] and parking_state
-                    and not parking_state.get('confirmed', False)):
-                parking_state['confirmed'] = True
-                parking_confirmed = True
-                quality = parking_state.get('quality', 0.0)
-                pen = parking_penalty_from_quality(quality)
-                q_pct = int(quality * 100)
-                if pen > 0:
-                    total_penalty += pen
-                    vehicle.penalty_pts = total_penalty
-                    enqueue(f"Estacionamiento {q_pct}%  -{pen} pts  (total: {total_penalty})",
-                            (255,145,50), 5.0)
+                    and not parking_state.get('confirmed',False)):
+                parking_state['confirmed']=True; parking_confirmed=True
+                quality=parking_state.get('quality',0.0)
+                pen=parking_penalty_from_quality(quality); q_pct=int(quality*100)
+                if pen>0:
+                    total_penalty+=pen; vehicle.penalty_pts=total_penalty
+                    enqueue(f"Estacionamiento {q_pct}%  -{pen} pts",(255,145,50),5.0)
                 else:
-                    enqueue(f"¡Estacionamiento perfecto {q_pct}%!  sin penalización",
-                            (80,240,110), 5.0)
+                    enqueue(f"Estacionamiento perfecto {q_pct}%!",(80,240,110),5.0)
 
-            # ── Barreras de zona ──────────────────────────────────────
+           
             bmsg = check_barriers(vehicle, cp_done)
             if bmsg:
                 barrier_msg   = bmsg
@@ -469,7 +456,7 @@ def main():
                 if barrier_timer <= 0:
                     barrier_msg = None
 
-            # ── Colisión conos ─────────────────────────────────────────
+      
             cone_hit, cone_idx = check_cone_collision(
                 vehicle.x, vehicle.z, ALL_CONES)
             cone_warning = False
@@ -488,13 +475,12 @@ def main():
                 if math.sqrt((vehicle.x-cx2)**2+(vehicle.z-cz2)**2) < 1.20:
                     cone_warning = True; break
 
-            # Checkpoints enter/exit
             if cp_index < len(CHECKPOINTS):
                 cp     = CHECKPOINTS[cp_index]
                 inside = in_zone(vehicle.x, vehicle.z, cp)
                 if inside and not cp_entered:
-                    cp_entered = True; parking_confirmed = False
-                    parking_state = None; current_cp = cp
+                    cp_entered=True; parking_confirmed=False
+                    parking_state=None; current_cp=cp
                     enqueue(f"Zona: {cp['name']}", (120,200,255), 4.0)
                 elif cp_entered and not inside:
                     is_parking = cp_index in _PARKING_CPS
@@ -511,21 +497,23 @@ def main():
                         if 0 <= eval_idx < len(cp_done): cp_done[eval_idx] = True
                         enqueue(f"Completado: {cp['name']}", (80,230,100), 4.0)
                         print(f"  CP {cp_index} completado: {cp['name']}")
-                        cp_index += 1; cp_entered = False
-                        parking_confirmed = False; parking_state = None
+                        cp_index+=1; cp_entered=False
+                        parking_confirmed=False; parking_state=None
                         if cp_index < len(CHECKPOINTS):
                             current_cp = CHECKPOINTS[cp_index]
-                            enqueue(f"Siguiente → {CHECKPOINTS[cp_index]['name']}",
+                            enqueue(f"Siguiente: {CHECKPOINTS[cp_index]['name']}",
                                     (180,210,255), 4.0)
 
-            # ── Meta ──────────────────────────────────────────────────
-            if all(cp_done) and crossed_finish(vehicle.x, vehicle.z) and not finished:
+            last_idx  = len(CHECKPOINTS) - 1
+            prev_done = all(cp_done[:-1]) if len(cp_done) > 1 else True
+            if not finished and cp_index == last_idx and cp_entered and prev_done:
                 finished = True
-                grade    = max(0, 100 - total_penalty)
-                result   = "APROBADO" if grade >= 50 else "DESAPROBADO"
-                enqueue(f"¡EXAMEN COMPLETADO!  {result}  ({grade}/100)",
-                        (80, 240, 110), 99)
-                print(f"\n  EXAMEN COMPLETADO – {result}")
+                cp_done[-1] = True
+                grade  = max(0, 100 - total_penalty)
+                result = "APROBADO" if grade >= 50 else "DESAPROBADO"
+                enqueue(f"EXAMEN COMPLETADO!  {result}  ({grade}/100)",
+                        (80,240,110), 99)
+                print(f"\n  EXAMEN COMPLETADO - {result}")
                 print(f"  Conos: {len(cones_hit_set)} | Penaliz: {total_penalty} | Nota: {grade}/100\n")
 
             # ── Avanzar feedback en cola ──────────────────────────────
@@ -574,24 +562,18 @@ def main():
         draw_gear_indicator(W, H, vehicle.speed, vehicle.is_reversing, fonts,
                             gear=vehicle.gear, rpm=vehicle.rpm)
 
-        # Minimapa (inferior derecho, encima tablero)
+        # Minimapa
         draw_minimap(W, H, vehicle.x, vehicle.z, vehicle.angle, cp_done, fonts)
-
-        # Advertencia de cono (bordes rojos)
+        # Advertencia cono
         draw_cone_warning(W, H, cone_warning, fonts, tick)
-
-        # Barrera de zona bloqueada
+        # Barrera
         draw_zone_barrier(W, H, barrier_msg, fonts, tick)
-
-        # Feedback (1 mensaje a la vez, centro inferior)
+        # Feedback
         draw_feedback_flash(W, H, [fb_current] if fb_current else [], fonts)
-
-        # Controles
-        draw_controls_legend(W, H, fonts)
-
+        # Controles (C para toggle)
+        draw_controls_legend(W, H, fonts, visible=controls_visible)
         # Estacionamiento
         draw_parking_hud(W, H, parking_state, fonts)
-
         # Rendimiento (F3)
         if perf_visible:
             draw_perf_overlay(W, H, perf_data, fonts)

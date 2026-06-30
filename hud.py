@@ -1,3 +1,15 @@
+# hud.py  —  Versión 4.3
+"""
+HUD del simulador. Cambios v4.3:
+  - Panel de guía OCULTABLE con tecla H (toggle show/hide)
+  - Un solo panel lateral izquierdo con instrucción del CP actual
+  - Sin feedback volátil superpuesto: los mensajes van en cola
+    y se muestran de uno en uno, con duración más larga
+  - draw_feedback_flash simplificado: 1 mensaje a la vez, centrado
+  - draw_checkpoint_progress: barra compacta bajo el panel de guía
+  - Barreras de zona: draw_zone_barrier dibuja un indicador visual
+    cuando el jugador está bloqueado
+"""
 
 import math
 import pygame
@@ -266,6 +278,7 @@ def draw_feedback_flash(W, H, feedbacks, fonts):
     msg_h  = max(32, int(H * 0.052))
     pw     = int(W * 0.50)
     px     = W//2 - pw//2
+    # Centrado verticalmente entre el tablero y el panel de instrucciones
     py     = H - 12 - msg_h
 
     alpha  = fb.alpha
@@ -361,9 +374,9 @@ def draw_gear_indicator(W, H, speed, is_reversing, fonts, gear=1, rpm=900):
     ph = int(H * 0.075)
     px = cx - pw//2; py = cy - ph//2
     if gear == -1:
-        letter, col, bg = "R", (255,80,60),   (0.28,0.05,0.04,0.92)
+        letter, col, bg = "R", (255,80,60),  (0.28,0.05,0.04,0.92)
     elif gear == 0:
-        letter, col, bg = "N", (220,200,80),  (0.20,0.18,0.02,0.92)
+        letter, col, bg = "N", (220,200,80), (0.20,0.18,0.02,0.92)
     else:
         letter = str(gear)
         if rpm > 5500:
@@ -403,37 +416,48 @@ def draw_cone_warning(W, H, cone_nearby, fonts, tick):
 # LEYENDA DE CONTROLES  (izquierda superior)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def draw_controls_legend(W, H, fonts):
-    lines = [
-        ("W/UP",    "Acelerar"),
-        ("S/DOWN",  "Frenar/Rev"),
-        ("A/D",     "Girar"),
-        ("Q",       "Subir marcha"),
-        ("E",       "Bajar marcha"),
-        ("ENTER",   "Confirmar estac."),
-        ("H",       "Ocultar/mostrar guia"),
-        ("F3",      "Rendimiento PC"),
-        ("F11",     "Pantalla completa"),
-        ("ESC",     "Salir"),
-    ]
-    lh  = max(16, int(H * 0.024))
+def draw_controls_legend(W, H, fonts, visible=True):
+    lh  = max(14, int(H * 0.022))
     pad = 8
     pw  = int(W * 0.175)
-    ph  = lh * len(lines) + pad*2 + lh
     px  = 10
+    if not visible:
+        btn_h = 26
+        btn_y = H - btn_h - 10
+        _rrect(px, btn_y, pw, btn_h, (0.04,0.05,0.08,0.82), r=6)
+        _border(px, btn_y, pw, btn_h, (0.25,0.30,0.38,0.80), 1.2)
+        draw_text(px + pw//2, btn_y + btn_h - 5,
+                  "[C]  Mostrar controles",
+                  fonts['small'], color=(140,150,140), anchor="topcenter")
+        return
+    lines = [
+        ("W / UP",   "Acelerar"),
+        ("S / DOWN", "Frenar / Rev"),
+        ("A / D",    "Girar"),
+        ("Q",        "Subir marcha"),
+        ("E",        "Bajar marcha"),
+        ("ENTER",    "Confirmar estac."),
+        ("H",        "Guia on/off"),
+        ("C",        "Controles on/off"),
+        ("F3",       "Rendimiento PC"),
+        ("F11",      "Pantalla completa"),
+        ("P",        "Exportar PDF"),
+        ("ESC",      "Salir"),
+    ]
+    ph  = lh * len(lines) + pad*2 + lh
     py  = H - ph - 10
-    _rrect(px, py, pw, ph, (0.04,0.05,0.08,0.78), r=8)
-    draw_text(px+pw//2, py+ph-pad, "CONTROLES", fonts['label'],
-              color=(145,150,145), anchor="topcenter")
+    _rrect(px, py, pw, ph, (0.04,0.05,0.08,0.82), r=8)
+    _border(px, py, pw, ph, (0.20,0.25,0.32,0.70), 1.0)
+    draw_text(px+pw//2, py+ph-pad, "CONTROLES  [C]",
+              fonts['label'], color=(145,150,145), anchor="topcenter")
     for i,(key,desc) in enumerate(lines):
-        ry = py+ph-pad-lh*(i+1)-4
-        # Resaltar teclas de marcha en azul claro
-        kcol = (130,200,255) if key in ("Q","E") else \
-               (255,230,80)  if key == "ENTER"   else \
-               (160,220,160) if key == "F3"      else (200,192,115)
-        draw_text(px+10, ry+lh, key, fonts['small'], color=kcol, anchor="topleft")
-        draw_text(px+int(pw*0.42), ry+lh, desc, fonts['small'],
-                  color=(168,174,170), anchor="topleft")
+        ry = py + ph - pad - lh*(i+1) - 4
+        kcol = (130,200,255) if key in ("Q","E")           else \
+               (255,230,80)  if key in ("ENTER","P","C")   else \
+               (160,220,160) if key == "F3"                else \
+               (200,192,115)
+        draw_text(px+10,           ry+lh, key,  fonts['small'], color=kcol,        anchor="topleft")
+        draw_text(px+int(pw*0.42), ry+lh, desc, fonts['small'], color=(168,174,170), anchor="topleft")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -577,19 +601,15 @@ def draw_perf_overlay(W, H, perf_data, fonts):
     ty=py+ph-8
     draw_text(cx,ty,"RENDIMIENTO  [ F3 ]",fonts['label'],color=(170,185,200),anchor="topcenter")
     ty-=lh+4; _border(px+6,ty+lh-2,pw-12,1,(0.20,0.25,0.35,0.70),1.0); ty-=4
-    # FPS
     fps=perf_data.get('fps',0.0); ft=perf_data.get('fps_target',60); fr=fps/max(ft,1)
     fc=(0.20,0.85,0.30,1.0) if fr>0.75 else (0.88,0.70,0.05,1.0) if fr>0.45 else (0.88,0.12,0.06,1.0)
     _perf_bar(px+pad,ty-bh,bw,bh,fr,fc,"FPS",f"{fps:.0f} / {ft}",fonts); ty-=lh
-    # CPU
-    cp=perf_data.get('cpu_pct',0.0)
-    cc=(0.20,0.80,0.28,1.0) if cp<50 else (0.88,0.68,0.05,1.0) if cp<80 else (0.88,0.12,0.06,1.0)
-    _perf_bar(px+pad,ty-bh,bw,bh,cp/100,cc,"CPU",f"{cp:.1f}%",fonts); ty-=lh
-    # RAM
+    cp2=perf_data.get('cpu_pct',0.0)
+    cc=(0.20,0.80,0.28,1.0) if cp2<50 else (0.88,0.68,0.05,1.0) if cp2<80 else (0.88,0.12,0.06,1.0)
+    _perf_bar(px+pad,ty-bh,bw,bh,cp2/100,cc,"CPU",f"{cp2:.1f}%",fonts); ty-=lh
     rp=perf_data.get('ram_pct',0.0); rm=perf_data.get('ram_mb',0.0)
     rc=(0.20,0.80,0.28,1.0) if rp<60 else (0.88,0.68,0.05,1.0) if rp<85 else (0.88,0.12,0.06,1.0)
     _perf_bar(px+pad,ty-bh,bw,bh,rp/100,rc,"RAM",f"{rm:.0f} MB ({rp:.0f}%)",fonts); ty-=lh
-    # GPU
     gp=perf_data.get('gpu_pct',-1); gv=perf_data.get('gpu_vram_mb',-1)
     if gp>=0:
         gc=(0.20,0.80,0.28,1.0) if gp<60 else (0.88,0.68,0.05,1.0) if gp<85 else (0.88,0.12,0.06,1.0)
@@ -599,13 +619,13 @@ def draw_perf_overlay(W, H, perf_data, fonts):
         _perf_bar(px+pad,ty-bh,bw,bh,0,(0.20,0.22,0.28,1.0),"GPU","No disponible",fonts)
     ty-=lh+4; _border(px+6,ty+lh,pw-12,1,(0.20,0.25,0.35,0.70),1.0); ty-=2
     mc=int(bw/6.5)
-    for lbl,val in [("SO",  perf_data.get('os_name','—')),
-                    ("CPU", perf_data.get('cpu_name','—')),
-                    ("GPU", perf_data.get('gpu_name','—') or 'No detectada'),
-                    ("RAM", f"{perf_data.get('ram_total',0.0):.1f} GB total")]:
-        draw_text(px+pad+2, ty, lbl+":", fonts['small'], color=(145,158,170), anchor="topcenter")
-        vd=val if len(val)<=mc else val[:mc-1]+"…"
-        draw_text(px+pad+int(bw*0.28), ty, vd, fonts['small'], color=(200,210,220), anchor="topleft")
+    for lbl,val in [("SO",perf_data.get('os_name','--')),
+                    ("CPU",perf_data.get('cpu_name','--')),
+                    ("GPU",perf_data.get('gpu_name','--') or 'No detectada'),
+                    ("RAM",f"{perf_data.get('ram_total',0.0):.1f} GB total")]:
+        draw_text(px+pad+2,ty,lbl+":",fonts['small'],color=(145,158,170),anchor="topcenter")
+        vd=val if len(val)<=mc else val[:mc-1]+"..."
+        draw_text(px+pad+int(bw*0.28),ty,vd,fonts['small'],color=(200,210,220),anchor="topleft")
         ty-=lh
 
 
@@ -621,56 +641,46 @@ def parking_penalty_from_quality(quality):
 
 
 def draw_parking_hud(W, H, parking_state, fonts):
-    if not parking_state or not parking_state.get('active', False):
-        return
+    if not parking_state or not parking_state.get('active', False): return
     quality  = parking_state.get('quality',  0.0)
     in_slot  = parking_state.get('in_slot',  False)
     speed_ok = parking_state.get('speed_ok', False)
     angle_ok = parking_state.get('angle_ok', False)
-    slot_lbl = parking_state.get('slot_label','—')
+    slot_lbl = parking_state.get('slot_label','--')
     pk_type  = parking_state.get('type',     'parallel')
     confirmed= parking_state.get('confirmed', False)
     penalty  = parking_penalty_from_quality(quality)
-
-    pw=int(W*0.27); ph=int(H*0.23)
-    px=W//2-pw//2;  py=H-ph-int(H*0.24)
-
+    pw=int(W*0.27); ph=int(H*0.23); px=W//2-pw//2; py=H-ph-int(H*0.24)
     if quality>=0.80:   bc=(0.10,0.88,0.30,0.95); tc=(80,240,110)
     elif quality>=0.60: bc=(0.92,0.72,0.05,0.88); tc=(255,210,60)
     elif quality>=0.40: bc=(0.92,0.50,0.05,0.88); tc=(255,155,50)
     else:               bc=(0.90,0.12,0.06,0.88); tc=(255,75,55)
-
-    _rrect(px,py,pw,ph,(0.03,0.04,0.08,0.93),r=10)
-    _border(px,py,pw,ph,bc,2.0)
+    _rrect(px,py,pw,ph,(0.03,0.04,0.08,0.93),r=10); _border(px,py,pw,ph,bc,2.0)
     cx=px+pw//2; lh=max(16,int(H*0.024))
     tn="PARALELO" if pk_type=='parallel' else "DIAGONAL"
-    draw_text(cx,py+ph-7,f"ESTACIONAMIENTO {tn}",
-              fonts['label'],color=(155,165,175),anchor="topcenter")
+    draw_text(cx,py+ph-7,f"ESTACIONAMIENTO {tn}",fonts['label'],color=(155,165,175),anchor="topcenter")
     draw_text(cx,py+ph-7-lh-2,slot_lbl,fonts['title'],color=tc,anchor="topcenter")
-
     iy=py+ph-7-lh*2-10; ind_w=pw//3
     for i,(lbl,ok,txt) in enumerate([
-            ("Espacio", in_slot,  "✓ Dentro"  if in_slot  else "✗ Fuera"),
-            ("Angulo",  angle_ok, "✓ OK"      if angle_ok else "✗ Corregir"),
-            ("Detenido",speed_ok, "✓ Parado"  if speed_ok else "✗ Frena")]):
+            ("Espacio", in_slot,  "OK"     if in_slot  else "Fuera"),
+            ("Angulo",  angle_ok, "OK"     if angle_ok else "Corregir"),
+            ("Detenido",speed_ok, "Parado" if speed_ok else "Frena")]):
         ix=px+8+i*ind_w
         draw_text(ix+ind_w//2,iy,lbl,fonts['small'],color=(120,128,138),anchor="topcenter")
         draw_text(ix+ind_w//2,iy-lh+2,txt,fonts['small'],
                   color=(80,230,110) if ok else (240,70,55),anchor="topcenter")
-
-    bx=px+10; by=py+38; bw2=pw-20; bh2=10
-    _rect(bx,by,bw2,bh2,(0.08,0.09,0.12,1.0))
+    bx=px+10; by=py+38; bw2=pw-20; bh=10
+    _rect(bx,by,bw2,bh,(0.08,0.09,0.12,1.0))
     if quality>0:
         rc=0.88 if quality<0.5 else 0.88*(1.0-quality)*2
         gc=quality*1.6 if quality<0.5 else 0.78
-        _rect(bx,by,int(bw2*quality),bh2,(rc,gc,0.05,1.0))
-    _border(bx,by,bw2,bh2,(0.20,0.22,0.28,0.80),1.0)
-    draw_text(bx+bw2+6,by+bh2,f"{int(quality*100)}%",
-              fonts['small'],color=tc,anchor="bottomleft")
-    pt=f"Confirmando ahora: -{penalty} pts" if penalty>0 else "Confirmando ahora: sin penalización"
+        _rect(bx,by,int(bw2*quality),bh,(rc,gc,0.05,1.0))
+    _border(bx,by,bw2,bh,(0.20,0.22,0.28,0.80),1.0)
+    draw_text(bx+bw2+6,by+bh,f"{int(quality*100)}%",fonts['small'],color=tc,anchor="bottomleft")
+    pt=f"Confirmar: -{penalty} pts" if penalty>0 else "Confirmar: sin penalizacion"
     draw_text(cx,by-3,pt,fonts['small'],
               color=(230,100,60) if penalty>0 else (80,220,100),anchor="bottomcenter")
-    btn="[ ENTER ]  Confirmar estacionamiento" if not confirmed else "✓ Confirmado — sal del espacio"
+    btn="[ ENTER ]  Confirmar" if not confirmed else "Confirmado - sal del espacio"
     draw_text(cx,py+6,btn,fonts['label'],
               color=(255,230,80) if not confirmed else (80,230,110),anchor="bottomcenter")
 
@@ -683,7 +693,7 @@ def draw_finish_screen(W, H, penalty_pts, cones_hit, fonts):
     grade  = max(0, 100 - penalty_pts)
     passed = grade >= 50
     _rect(0, 0, W, H, (0,0,0,0.68))
-    pw, ph = 560, int(H*0.44)
+    pw, ph = 560, int(H*0.52)
     px = W//2 - pw//2; py = H//2 - ph//2
     bg = (0.04,0.22,0.07,0.96) if passed else (0.22,0.04,0.04,0.96)
     _rrect(px, py, pw, ph, bg, r=16)
@@ -693,13 +703,15 @@ def draw_finish_screen(W, H, penalty_pts, cones_hit, fonts):
     draw_text(cx, py+ph-18, "EXAMEN COMPLETADO",
               fonts['finish_title'], color=(228,232,228), anchor="topcenter")
     rc = (80,245,112) if passed else (240,68,58)
-    draw_text(cx, py+int(ph*0.72), "APROBADO" if passed else "DESAPROBADO",
+    draw_text(cx, py+int(ph*0.76), "APROBADO" if passed else "DESAPROBADO",
               fonts['finish_result'], color=rc, anchor="topcenter")
-    draw_text(cx, py+int(ph*0.50), f"Calificacion:  {grade} / 100 puntos",
+    draw_text(cx, py+int(ph*0.57), f"Calificacion:  {grade} / 100 puntos",
               fonts['body'], color=(212,218,212), anchor="topcenter")
-    draw_text(cx, py+int(ph*0.36), f"Conos golpeados: {cones_hit}",
+    draw_text(cx, py+int(ph*0.44), f"Conos golpeados: {cones_hit}",
               fonts['body'], color=(172,180,175), anchor="topcenter")
-    draw_text(cx, py+int(ph*0.22), f"Puntos penalizacion: {penalty_pts}",
+    draw_text(cx, py+int(ph*0.32), f"Puntos de penalizacion: {penalty_pts}",
               fonts['body'], color=(172,180,175), anchor="topcenter")
-    draw_text(cx, py+int(ph*0.10), "Presiona ESC para salir",
+    draw_text(cx, py+int(ph*0.19), "[ P ]  Imprimir / Exportar reporte PDF",
+              fonts['body'], color=(80,240,120), anchor="topcenter")
+    draw_text(cx, py+int(ph*0.08), "ESC  para salir",
               fonts['small'], color=(118,126,122), anchor="topcenter")
